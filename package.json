@@ -14,8 +14,14 @@
     "turbo": "latest",
     "typescript": "latest"
   },
-  "packageManager": "pnpm@latest",
+  "packageManager": "pnpm@10.11.0",
   "engines": {
     "node": ">=22"
+  },
+  "pnpm": {
+    "overrides": {
+      "react": "19.1.0",
+      "react-dom": "19.1.0"
+    }
   }
 }

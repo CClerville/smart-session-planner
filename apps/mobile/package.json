@@ -1,0 +1,49 @@
+{
+  "name": "mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~6.1.2",
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
+    "@tamagui/babel-plugin": "^1.121.10",
+    "@tamagui/config": "^1.121.10",
+    "@tamagui/font-inter": "^1.121.10",
+    "@tamagui/toast": "^1.121.10",
+    "@tanstack/react-query": "^5.80.6",
+    "@trpc/client": "^11.1.2",
+    "@trpc/react-query": "^11.1.2",
+    "burnt": "^0.12.2",
+    "expo": "~54.0.25",
+    "expo-constants": "~18.0.10",
+    "expo-linking": "~8.0.9",
+    "expo-router": "~6.0.15",
+    "expo-secure-store": "~15.0.7",
+    "expo-splash-screen": "~31.0.11",
+    "expo-status-bar": "~3.0.8",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-reanimated": "~4.1.5",
+    "react-native-safe-area-context": "5.6.2",
+    "react-native-screens": "~4.16.0",
+    "react-native-web": "~0.21.2",
+    "superjson": "^2.2.2",
+    "tamagui": "^1.121.10"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.27.4",
+    "@repo/api": "workspace:*",
+    "@types/react": "~19.1.17",
+    "typescript": "~5.9.3"
+  }
+}

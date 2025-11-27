@@ -1,135 +1,250 @@
-# Turborepo starter
+# Smart Session Planner
 
-This Turborepo starter is maintained by the Turborepo core team.
+A full-stack mobile application for intelligent session scheduling and planning.
 
-## Using this example
+## Tech Stack
 
-Run the following command:
+- **Mobile App:** Expo (React Native) + TypeScript + Tamagui
+- **Backend API:** Next.js 16 App Router + tRPC
+- **Database:** PostgreSQL + Prisma
+- **Auth:** JWT + bcrypt
 
-```sh
-npx create-turbo@latest
+## Project Structure
+
+```text
+├── apps/
+│   ├── api/           # Next.js API server with tRPC
+│   └── mobile/        # Expo mobile app
+├── packages/
+│   ├── api/           # tRPC routers and schemas
+│   ├── database/      # Prisma schema and client
+│   ├── eslint-config/ # Shared ESLint config
+│   ├── typescript-config/ # Shared TS config
+│   └── ui/            # Shared UI components
 ```
 
-## What's inside?
+## Getting Started
 
-This Turborepo includes the following packages/apps:
+### Prerequisites
 
-### Apps and Packages
+- Node.js 22+
+- pnpm 10.11.0+ (see `packageManager` field in `package.json`)
+- Docker and Docker Compose (for PostgreSQL database)
+- Expo Go app (for mobile testing)
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+### 1. Install Dependencies
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+```bash
+pnpm install
+```
 
-### Utilities
+### 2. Setup Environment Variables
 
-This Turborepo has some additional tools already setup for you:
+Create a `.env` file in `apps/api/` directory:
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/smart_session_planner"
+JWT_SECRET="your-secret-key-generate-with-openssl-rand-base64-32"
+```
+
+**Note:** The `DATABASE_URL` above matches the default Docker Compose configuration. The API dev script will automatically start the PostgreSQL container.
+
+**Optional:** For the mobile app, you can set `EXPO_PUBLIC_API_URL` in `apps/mobile/.env` if you need to connect to a different API URL (defaults to `http://localhost:3000`).
+
+### 3. Setup Database
+
+The API dev script automatically starts Docker Compose to run PostgreSQL. However, you need to generate the Prisma client and push the schema first:
+
+```bash
+cd apps/api
+pnpm db:generate
+pnpm db:push
+```
+
+**Note:** Make sure Docker is running before starting the API server. The dev script will handle starting the database container automatically.
+
+### 4. Start Development
+
+You have two options to start the development servers:
+
+#### Option A: Run Both Apps Together (Recommended)
+
+From the root directory, run both the API and mobile app in parallel:
+
+```bash
+pnpm dev
+```
+
+This will:
+- Start the PostgreSQL database via Docker Compose (from the API dev script)
+- Start the Next.js API server on `http://localhost:3000`
+- Start the Expo development server for the mobile app
+
+#### Option B: Run Apps Separately
+
+**Start the API server:**
+
+```bash
+cd apps/api
+pnpm dev
+```
+
+This command will:
+- Automatically start Docker Compose to run PostgreSQL
+- Kill any existing process on port 3000
+- Start the Next.js API server on `http://localhost:3000`
+
+**Start the mobile app** (in a separate terminal):
+
+```bash
+cd apps/mobile
+pnpm start
+```
+
+The mobile app will connect to `http://localhost:3000` by default. Scan the QR code with Expo Go to run on your device.
+
+## Features
+
+### Session Types
+
+- Create/edit/delete session types
+- Priority levels (1-5) with color coding
+- Track completed sessions per type
+
+### User Availability
+
+- Set weekly availability windows
+- Define time slots per day of week
+- Used by suggestion algorithm
+
+### Smart Scheduling
+
+- Create scheduled sessions
+- View calendar with week navigation
+- Conflict detection and warnings
+- **Smart Suggestions**: AI-powered time slot recommendations based on:
+  - User availability windows
+  - Existing scheduled sessions
+  - Session priority (high priority prefers mornings)
+  - Fatigue heuristic (max 2 high-priority per day)
+  - Spacing optimization
+
+### Progress Tracking
+
+- Completion rate statistics
+- Current streak tracking
+- Average sessions per week
+- Breakdown by session type
+- Total hours tracked
+
+## API Endpoints (tRPC)
+
+All endpoints are accessible via `/api/trpc`:
+
+- `auth.register` / `auth.login` / `auth.me`
+- `sessionTypes.list` / `.create` / `.update` / `.delete`
+- `availability.get` / `.upsert` / `.delete`
+- `sessions.list` / `.upcoming` / `.create` / `.update` / `.delete` / `.complete`
+- `suggestions.getSuggestions`
+- `stats.getStats`
+
+## Mobile App Screens
+
+- **Auth**: Login / Register
+- **Dashboard**: Quick stats, upcoming sessions, quick actions
+- **Schedule**: Calendar view with week navigation
+- **Types**: Session type management
+- **Profile**: Settings, availability, logout
+- **Suggestions**: Smart scheduling recommendations
+- **Stats**: Detailed analytics and progress
+
+## Development
+
+### Type Safety
+
+tRPC provides end-to-end type safety. Changes to API shapes are immediately reflected in the mobile app with TypeScript errors.
+
+### Database Migrations
+
+```bash
+cd apps/api
+pnpm db:migrate    # Create migration
+pnpm db:push       # Push schema changes (dev)
+pnpm db:studio     # Open Prisma Studio
+```
 
 ### Build
 
-To build all apps and packages, run the following command:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+```bash
+pnpm build  # Build all packages
 ```
 
-You can build a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
+## Troubleshooting
 
-```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build --filter=docs
+### Port 3000 Already in Use
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
+If you get an error that port 3000 is already in use:
 
-### Develop
+```bash
+# Kill the process on port 3000 (macOS/Linux)
+lsof -ti:3000 | xargs kill -9
 
-To develop all apps and packages, run the following command:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
+# Or manually stop the process and restart
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
+The API dev script automatically handles this, but if running manually, you may need to stop the existing process first.
 
-```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev --filter=web
+### Docker Not Running
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
+If you see database connection errors:
 
-### Remote Caching
+1. Make sure Docker Desktop (or Docker daemon) is running
+2. Check if the container is running: `docker ps`
+3. Start the container manually if needed:
+   ```bash
+   docker compose -f docker-compose.yml up -d
+   ```
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+### Database Connection Issues
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
+If you're having trouble connecting to the database:
 
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
+1. Verify the `DATABASE_URL` in `apps/api/.env` matches the Docker Compose configuration:
+   ```env
+   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/smart_session_planner"
+   ```
 
-```
-cd my-turborepo
+2. Check if the PostgreSQL container is running:
+   ```bash
+   docker ps | grep smart-session-db
+   ```
 
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo login
+3. View container logs if there are issues:
+   ```bash
+   docker logs smart-session-db
+   ```
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
-```
+4. Reset the database if needed (⚠️ **WARNING:** This will delete all data):
+   ```bash
+   docker compose -f docker-compose.yml down -v
+   docker compose -f docker-compose.yml up -d
+   cd apps/api
+   pnpm db:push
+   ```
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+### Mobile App Can't Connect to API
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
+If the mobile app can't reach the API:
 
-```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo link
+1. Make sure the API server is running on `http://localhost:3000`
+2. If testing on a physical device, ensure your device is on the same network
+3. For physical devices, you may need to set `EXPO_PUBLIC_API_URL` to your computer's local IP address:
+   ```env
+   # In apps/mobile/.env
+   EXPO_PUBLIC_API_URL="http://192.168.1.XXX:3000"
+   ```
+4. If using Expo Go, you can use the tunnel option: `pnpm start --tunnel`
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
-```
+## License
 
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.com/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.com/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.com/docs/reference/configuration)
-- [CLI Usage](https://turborepo.com/docs/reference/command-line-reference)
+MIT
