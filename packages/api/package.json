@@ -1,0 +1,31 @@
+{
+  "name": "@repo/api",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/database": "workspace:*",
+    "@trpc/server": "^11.1.2",
+    "bcrypt": "^6.0.0",
+    "jose": "^6.0.11",
+    "superjson": "^2.2.2",
+    "zod": "^3.25.30"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/bcrypt": "^5.0.2",
+    "typescript": "5.9.2"
+  }
+}
+

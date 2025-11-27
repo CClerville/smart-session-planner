@@ -1,0 +1,128 @@
+// =============================================================================
+// PRISMA SCHEMA - Smart Session Planner
+// =============================================================================
+// This schema defines the database models for the session planning application.
+// Uses PostgreSQL as the database provider.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// USER MODEL
+// =============================================================================
+// Represents an authenticated user of the application.
+// All other models are scoped to a user via userId foreign key.
+// =============================================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String // bcrypt hashed password
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations - cascade delete all user data when user is deleted
+  sessionTypes   SessionType[]
+  availabilities Availability[]
+  sessions       Session[]
+
+  @@map("users")
+}
+
+// =============================================================================
+// SESSION TYPE MODEL
+// =============================================================================
+// Defines categories/types of sessions a user can schedule.
+// Examples: "Deep Work", "Exercise", "Reading", "Meetings"
+// =============================================================================
+
+model SessionType {
+  id        String   @id @default(cuid())
+  name      String // Display name for this session type
+  category  String? // Optional grouping category
+  priority  Int      @default(3) // 1 (lowest) to 5 (highest)
+  color     String? // Hex color for UI display (e.g., "#FF5733")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions Session[]
+
+  // Constraints - user cannot have duplicate session type names
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("session_types")
+}
+
+// =============================================================================
+// AVAILABILITY MODEL
+// =============================================================================
+// Defines time windows when a user is available for sessions.
+// Each record represents one availability window on a specific day of week.
+// =============================================================================
+
+model Availability {
+  id        String   @id @default(cuid())
+  dayOfWeek Int // 0 = Sunday, 1 = Monday, ... 6 = Saturday
+  startTime String // Time in "HH:MM" 24-hour format (e.g., "09:00")
+  endTime   String // Time in "HH:MM" 24-hour format (e.g., "17:00")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Index for efficient lookups by user and day
+  @@index([userId, dayOfWeek])
+  @@map("availabilities")
+}
+
+// =============================================================================
+// SESSION MODEL
+// =============================================================================
+// Represents a scheduled, completed, or cancelled session.
+// Links to a SessionType to inherit type metadata.
+// =============================================================================
+
+model Session {
+  id        String        @id @default(cuid())
+  startTime DateTime // When the session begins
+  endTime   DateTime // When the session ends
+  duration  Int // Duration in minutes (denormalized for convenience)
+  status    SessionStatus @default(SCHEDULED)
+  notes     String? // Optional notes for this session
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  // Relations
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionTypeId String
+  sessionType   SessionType @relation(fields: [sessionTypeId], references: [id], onDelete: Cascade)
+
+  // Indexes for common query patterns
+  @@index([userId, startTime]) // List sessions for user in date range
+  @@index([sessionTypeId]) // Count sessions by type
+  @@index([userId, status]) // Filter by status
+  @@map("sessions")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum SessionStatus {
+  SCHEDULED // Session is planned but not yet completed
+  COMPLETED // Session was successfully completed
+  CANCELLED // Session was cancelled
+}
