@@ -32,6 +32,7 @@ model User {
   sessionTypes   SessionType[]
   availabilities Availability[]
   sessions       Session[]
+  preferences    UserPreferences?
 
   @@map("users")
 }
@@ -49,6 +50,7 @@ model SessionType {
   category  String? // Optional grouping category
   priority  Int      @default(3) // 1 (lowest) to 5 (highest)
   color     String? // Hex color for UI display (e.g., "#FF5733")
+  icon      String? // Ionicons icon name (e.g., "leaf", "people", "code-slash")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -115,6 +117,31 @@ model Session {
   @@index([sessionTypeId]) // Count sessions by type
   @@index([userId, status]) // Filter by status
   @@map("sessions")
+}
+
+// =============================================================================
+// USER PREFERENCES MODEL
+// =============================================================================
+// Stores user-specific settings for the suggestion algorithm.
+// One-to-one relation with User - created lazily when user updates preferences.
+// =============================================================================
+
+model UserPreferences {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Suggestion algorithm settings
+  maxDailyMinutes       Int     @default(480) // Max session time per day (8 hours)
+  bufferMinutes         Int     @default(30) // Gap between sessions
+  preferMornings        Boolean @default(true) // Bonus for morning slots on high-priority
+  maxHighPriorityPerDay Int     @default(2) // Max priority 4-5 sessions per day
+
+  // Relations
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
 }
 
 // =============================================================================
