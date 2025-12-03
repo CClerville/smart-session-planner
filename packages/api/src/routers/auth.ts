@@ -7,16 +7,16 @@
 
 import { TRPCError } from "@trpc/server";
 import {
-  createTRPCRouter,
-  publicProcedure,
-  protectedProcedure,
-} from "../trpc.js";
-import { registerSchema, loginSchema } from "../lib/schemas.js";
-import {
+  createToken,
   hashPassword,
   verifyPassword,
-  createToken,
 } from "../lib/auth.js";
+import { loginSchema, registerSchema } from "../lib/schemas.js";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  publicProcedure,
+} from "../trpc.js";
 
 // -----------------------------------------------------------------------------
 // Router Definition
@@ -157,6 +157,14 @@ export const authRouter = createTRPCRouter({
     }
 
     return user;
+  }),
+
+  // ---------------------------------------------------------------------------
+  // Logout - Clear auth on client side
+  // ---------------------------------------------------------------------------
+  logout: protectedProcedure.mutation(() => {
+    // Client should clear the token from SecureStore
+    return { success: true };
   }),
 });
 

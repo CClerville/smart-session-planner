@@ -42,6 +42,7 @@ export const sessionTypesRouter = createTRPCRouter({
       category: type.category,
       priority: type.priority,
       color: type.color,
+      icon: type.icon,
       createdAt: type.createdAt,
       updatedAt: type.updatedAt,
       completedCount: type._count.sessions,

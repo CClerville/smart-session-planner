@@ -1,20 +1,24 @@
 // =============================================================================
 // AUTHENTICATION CONTEXT
 // =============================================================================
-// Manages auth state with SecureStore for token persistence.
+// Manages auth state using React Query's auth.me as source of truth.
 // Provides login/logout functions and current user state.
+// Uses SecureStore for token persistence and optimistic loading.
 // =============================================================================
 
+import { TRPCError } from "@trpc/server";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
-  useCallback,
   type ReactNode,
 } from "react";
-import * as SecureStore from "expo-secure-store";
 import { queryClient } from "./query-client";
+import * as storage from "./storage";
+import { getToken } from "./storage";
+import { trpc } from "./trpc";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -55,30 +59,21 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // -----------------------------------------------------------------------------
 // Token Storage Functions
 // -----------------------------------------------------------------------------
-
-/**
- * Get stored auth token. Used by tRPC client for auth headers.
- */
-export async function getToken(): Promise<string | null> {
-  try {
-    return await SecureStore.getItemAsync(TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
+// Uses SecureStore for encrypted device storage on mobile platforms.
+// -----------------------------------------------------------------------------
 
 /**
  * Store auth token securely.
  */
 async function setToken(token: string): Promise<void> {
-  await SecureStore.setItemAsync(TOKEN_KEY, token);
+  await storage.setItem(TOKEN_KEY, token);
 }
 
 /**
  * Remove stored auth token.
  */
 async function removeToken(): Promise<void> {
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
+  await storage.deleteItem(TOKEN_KEY);
 }
 
 /**
@@ -86,7 +81,7 @@ async function removeToken(): Promise<void> {
  */
 async function getStoredUser(): Promise<User | null> {
   try {
-    const data = await SecureStore.getItemAsync(USER_KEY);
+    const data = await storage.getItem(USER_KEY);
     return data ? JSON.parse(data) : null;
   } catch {
     return null;
@@ -97,14 +92,14 @@ async function getStoredUser(): Promise<User | null> {
  * Store user data.
  */
 async function setStoredUser(user: User): Promise<void> {
-  await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+  await storage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 /**
  * Remove stored user data.
  */
 async function removeStoredUser(): Promise<void> {
-  await SecureStore.deleteItemAsync(USER_KEY);
+  await storage.deleteItem(USER_KEY);
 }
 
 // -----------------------------------------------------------------------------
@@ -116,44 +111,143 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Get tRPC utils for query invalidation
+  const utils = trpc.useUtils();
 
-  // Load stored auth on mount
+  // Optimistic user state from local storage for instant UI
+  const [optimisticUser, setOptimisticUser] = useState<User | null>(null);
+  const [hasCheckedStorage, setHasCheckedStorage] = useState(false);
+
+  // Check if token exists in storage to enable the query
+  const [hasToken, setHasToken] = useState<boolean | null>(null);
+
+  // Load optimistic state from storage on mount
   useEffect(() => {
-    async function loadAuth() {
+    async function loadOptimisticState() {
       try {
         const [token, storedUser] = await Promise.all([
           getToken(),
           getStoredUser(),
         ]);
 
-        if (token && storedUser) {
-          setUser(storedUser);
+        // Enable query if token exists (storedUser is optional for query enablement)
+        if (token) {
+          // Load optimistic state if available, but don't require it
+          if (storedUser) {
+            setOptimisticUser(storedUser);
+          }
+          setHasToken(true);
+        } else {
+          setHasToken(false);
         }
       } catch (error) {
-        console.error("Failed to load auth:", error);
+        console.error("Failed to load optimistic auth state:", error);
+        // On error, default to no token
+        setHasToken(false);
       } finally {
-        setIsLoading(false);
+        setHasCheckedStorage(true);
       }
     }
 
-    loadAuth();
+    loadOptimisticState();
   }, []);
 
-  // Save auth data
-  const setAuth = useCallback(async (token: string, newUser: User) => {
-    await Promise.all([setToken(token), setStoredUser(newUser)]);
-    setUser(newUser);
-  }, []);
+  // Use React Query's auth.me as the source of truth
+  // Only enabled when we've checked storage and found a token
+  const {
+    data: serverUser,
+    isLoading: isQueryLoading,
+    error: queryError,
+  } = trpc.auth.me.useQuery(undefined, {
+    enabled: hasCheckedStorage && hasToken === true,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes - persists across hot reloads (was cacheTime in v4)
+    refetchOnMount: false, // Use cached data on hot reload
+    refetchOnWindowFocus: false,
+    retry: (failureCount, error) => {
+      // Don't retry on UNAUTHORIZED errors (expired/invalid token)
+      if (error instanceof TRPCError && error.code === "UNAUTHORIZED") {
+        return false;
+      }
+      // Retry network errors once (keeps optimistic state if retry fails)
+      return failureCount < 1;
+    },
+  });
 
-  // Clear auth data
+  // Handle successful server response - sync to local storage
+  useEffect(() => {
+    if (serverUser) {
+      // Sync server response to local storage
+      setStoredUser({
+        id: serverUser.id,
+        email: serverUser.email,
+        name: serverUser.name,
+      }).catch((err) => {
+        console.error("Failed to sync user to storage:", err);
+      });
+      setOptimisticUser({
+        id: serverUser.id,
+        email: serverUser.email,
+        name: serverUser.name,
+      });
+    }
+  }, [serverUser]);
+
+  // Handle query errors - UNAUTHORIZED means expired/invalid token
+  useEffect(() => {
+    if (queryError instanceof TRPCError && queryError.code === "UNAUTHORIZED") {
+      // Clear storage and optimistic state
+      Promise.all([removeToken(), removeStoredUser()]).catch((err) => {
+        console.error("Failed to clear auth storage:", err);
+      });
+      setOptimisticUser(null);
+      setHasToken(false);
+      // Remove auth.me from cache using tRPC utils
+      utils.auth.me.setData(undefined, undefined);
+    }
+    // Network errors: Keep optimistic state from storage
+    // User can continue using app offline, query will retry on next mount
+  }, [queryError, utils]);
+
+  // Determine the actual user (server response takes precedence)
+  const user = serverUser
+    ? {
+        id: serverUser.id,
+        email: serverUser.email,
+        name: serverUser.name,
+      }
+    : optimisticUser;
+
+  // Loading state: still checking storage OR query is loading
+  const isLoading = !hasCheckedStorage || (hasToken === true && isQueryLoading);
+
+  // Save auth data after login/register
+  const setAuth = useCallback(
+    async (token: string, newUser: User) => {
+      // Store token and user in local storage
+      await Promise.all([setToken(token), setStoredUser(newUser)]);
+      setOptimisticUser(newUser);
+      setHasToken(true);
+
+      // Invalidate auth.me query to trigger refetch with new token
+      await utils.auth.me.invalidate();
+    },
+    [utils]
+  );
+
+  // Clear auth data on logout
   const clearAuth = useCallback(async () => {
+    // Clear local storage
     await Promise.all([removeToken(), removeStoredUser()]);
-    setUser(null);
-    // Clear all cached queries on logout
+    setOptimisticUser(null);
+    setHasToken(false);
+
+    // Remove auth.me from cache using tRPC utils
+    utils.auth.me.setData(undefined, undefined);
+
+    // Clear all other cached queries on logout
     queryClient.clear();
-  }, []);
+  }, [utils]);
 
   const value: AuthContextValue = {
     user,
@@ -183,4 +277,3 @@ export function useAuth(): AuthContextValue {
 
   return context;
 }
-

@@ -45,12 +45,21 @@ export const colorSchema = z
   .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
   .optional();
 
+/** Icon name validation (optional) - Ionicons icon name */
+export const iconSchema = z
+  .string()
+  .min(1)
+  .max(50)
+  .trim()
+  .optional();
+
 /** Create session type input */
 export const createSessionTypeSchema = z.object({
   name: z.string().min(1, "Name is required").max(100).trim(),
   category: z.string().max(50).trim().optional(),
   priority: prioritySchema.default(3),
   color: colorSchema,
+  icon: iconSchema,
 });
 
 /** Update session type input */
@@ -60,6 +69,7 @@ export const updateSessionTypeSchema = z.object({
   category: z.string().max(50).trim().optional().nullable(),
   priority: prioritySchema.optional(),
   color: colorSchema.nullable(),
+  icon: iconSchema.nullable(),
 });
 
 // -----------------------------------------------------------------------------
@@ -137,12 +147,34 @@ export const listSessionsSchema = z.object({
 // Suggestions Schema
 // -----------------------------------------------------------------------------
 
+/** Suggestion algorithm configuration - overrides user defaults */
+export const suggestionConfigSchema = z.object({
+  maxDailyMinutes: z.number().int().min(60).max(720).optional(),
+  bufferMinutes: z.number().int().min(0).max(120).optional(),
+  preferMornings: z.boolean().optional(),
+  maxHighPriorityPerDay: z.number().int().min(1).max(5).optional(),
+  timezone: z.string().optional(), // IANA timezone, e.g., "America/New_York"
+});
+
 /** Get suggestions input */
 export const getSuggestionsSchema = z.object({
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   sessionTypeId: z.string().cuid().optional(),
   duration: z.number().int().min(15).max(480).default(60),
+  config: suggestionConfigSchema.optional(),
+});
+
+// -----------------------------------------------------------------------------
+// User Preferences Schema
+// -----------------------------------------------------------------------------
+
+/** Update user preferences input */
+export const updateUserPreferencesSchema = z.object({
+  maxDailyMinutes: z.number().int().min(60).max(720).optional(),
+  bufferMinutes: z.number().int().min(0).max(120).optional(),
+  preferMornings: z.boolean().optional(),
+  maxHighPriorityPerDay: z.number().int().min(1).max(5).optional(),
 });
 
 // -----------------------------------------------------------------------------

@@ -2,39 +2,41 @@
 // TABS LAYOUT
 // =============================================================================
 // Bottom tab navigation for main app screens.
+// Styled to match Figma design with white background and outline icons.
 // =============================================================================
 
-import { Tabs } from "expo-router";
-import { useColorScheme } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+// Design colors from Figma
+const ACTIVE_COLOR = "#1A1A1A"; // Dark grey when active
+const INACTIVE_COLOR = "#9CA3AF"; // Light grey when inactive
+const BACKGROUND_COLOR = "#FFFFFF"; // White tab bar
+const BORDER_COLOR = "#E5E7EB"; // Light grey border
 
 export default function TabsLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-
-  // Theme colors
-  const activeColor = "#8B5CF6"; // Brand purple
-  const inactiveColor = isDark ? "#6B7280" : "#9CA3AF";
-  const backgroundColor = isDark ? "#0a0a0a" : "#ffffff";
-  const borderColor = isDark ? "#1f1f1f" : "#e5e7eb";
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: activeColor,
-        tabBarInactiveTintColor: inactiveColor,
+        tabBarActiveTintColor: ACTIVE_COLOR,
+        tabBarInactiveTintColor: INACTIVE_COLOR,
         tabBarStyle: {
-          backgroundColor,
-          borderTopColor: borderColor,
+          backgroundColor: BACKGROUND_COLOR,
+          borderTopColor: BORDER_COLOR,
           borderTopWidth: 1,
           paddingTop: 8,
-          paddingBottom: 8,
-          height: 60,
+          paddingBottom: Math.max(8, insets.bottom),
+          height: 60 + Math.max(0, insets.bottom - 8),
+          elevation: 0, // Remove Android shadow
+          shadowOpacity: 0, // Remove iOS shadow
         },
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: "600",
+          fontWeight: "500",
         },
       }}
     >
@@ -42,39 +44,54 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "home" : "home-outline"}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="schedule"
         options={{
-          title: "Schedule",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar" size={size} color={color} />
+          title: "Calendar",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "calendar" : "calendar-outline"}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
       <Tabs.Screen
-        name="types"
+        name="stats"
         options={{
-          title: "Types",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="layers" size={size} color={color} />
+          title: "Stats",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "stats-chart" : "stats-chart-outline"}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profile",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
+          title: "Settings",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "settings" : "settings-outline"}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
     </Tabs>
   );
 }
-

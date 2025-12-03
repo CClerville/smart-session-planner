@@ -5,14 +5,13 @@
 // =============================================================================
 
 import { TRPCError } from "@trpc/server";
-import { createTRPCRouter, protectedProcedure, type Context } from "../trpc.js";
 import {
   createSessionSchema,
-  updateSessionSchema,
-  listSessionsSchema,
   idSchema,
-  limitSchema,
+  listSessionsSchema,
+  updateSessionSchema,
 } from "../lib/schemas.js";
+import { createTRPCRouter, protectedProcedure, type Context } from "../trpc.js";
 
 // -----------------------------------------------------------------------------
 // Helper: Check for time conflicts
@@ -66,6 +65,7 @@ export const sessionsRouter = createTRPCRouter({
               id: true,
               name: true,
               color: true,
+              icon: true,
               priority: true,
             },
           },
@@ -77,33 +77,77 @@ export const sessionsRouter = createTRPCRouter({
     }),
 
   // ---------------------------------------------------------------------------
-  // Upcoming - Get next N scheduled sessions
+  // Upcoming - Get sessions for today and this week
   // ---------------------------------------------------------------------------
-  upcoming: protectedProcedure
-    .input(limitSchema)
-    .query(async ({ ctx, input }) => {
-      const sessions = await ctx.db.session.findMany({
-        where: {
-          userId: ctx.user.id,
-          status: "SCHEDULED",
-          startTime: { gte: new Date() },
+  upcoming: protectedProcedure.query(async ({ ctx }) => {
+    const now = new Date();
+
+    // Calculate today's date range (start of today to end of today)
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // Calculate this week's date range (Sunday to Saturday)
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay()); // Start of current week (Sunday)
+    weekStart.setHours(0, 0, 0, 0);
+
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6); // End of week (Saturday)
+    weekEnd.setHours(23, 59, 59, 999);
+
+    // Query sessions for today
+    const todaySessions = await ctx.db.session.findMany({
+      where: {
+        userId: ctx.user.id,
+        startTime: {
+          gte: todayStart,
+          lte: todayEnd,
         },
-        include: {
-          sessionType: {
-            select: {
-              id: true,
-              name: true,
-              color: true,
-              priority: true,
-            },
+      },
+      include: {
+        sessionType: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+            priority: true,
           },
         },
-        orderBy: { startTime: "asc" },
-        take: input.limit,
-      });
+      },
+      orderBy: { startTime: "asc" },
+    });
 
-      return sessions;
-    }),
+    // Query sessions for this week
+    const thisWeekSessions = await ctx.db.session.findMany({
+      where: {
+        userId: ctx.user.id,
+        startTime: {
+          gte: weekStart,
+          lte: weekEnd,
+        },
+      },
+      include: {
+        sessionType: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+            priority: true,
+          },
+        },
+      },
+      orderBy: { startTime: "asc" },
+    });
+
+    return {
+      today: todaySessions,
+      thisWeek: thisWeekSessions,
+    };
+  }),
 
   // ---------------------------------------------------------------------------
   // Get - Get single session by ID
@@ -179,6 +223,7 @@ export const sessionsRouter = createTRPCRouter({
               id: true,
               name: true,
               color: true,
+              icon: true,
               priority: true,
             },
           },
@@ -255,6 +300,7 @@ export const sessionsRouter = createTRPCRouter({
               id: true,
               name: true,
               color: true,
+              icon: true,
               priority: true,
             },
           },
@@ -321,6 +367,7 @@ export const sessionsRouter = createTRPCRouter({
               id: true,
               name: true,
               color: true,
+              icon: true,
               priority: true,
             },
           },

@@ -4,6 +4,7 @@
 // Provides analytics and derived metrics for user's session history.
 // =============================================================================
 
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 
 // -----------------------------------------------------------------------------
@@ -82,6 +83,7 @@ export const statsRouter = createTRPCRouter({
   // Get Stats - Comprehensive session analytics
   // ---------------------------------------------------------------------------
   getStats: protectedProcedure.query(async ({ ctx }) => {
+    try {
     // -------------------------------------------------------------------------
     // Fetch all sessions for user
     // -------------------------------------------------------------------------
@@ -215,15 +217,37 @@ export const statsRouter = createTRPCRouter({
     const totalHoursCompleted = Math.round((totalMinutesCompleted / 60) * 10) / 10;
 
     // -------------------------------------------------------------------------
-    // This week's summary
+    // Today's summary
     // -------------------------------------------------------------------------
     const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const todaySessions = sessions.filter(
+      (s: typeof sessions[number]) => s.startTime >= todayStart && s.startTime <= todayEnd
+    );
+    const todayCompleted = todaySessions.filter(
+      (s: typeof sessions[number]) => s.status === "COMPLETED"
+    ).length;
+    const todayScheduled = todaySessions.filter(
+      (s: typeof sessions[number]) => s.status === "SCHEDULED"
+    ).length;
+
+    // -------------------------------------------------------------------------
+    // This week's summary
+    // -------------------------------------------------------------------------
     const weekStart = new Date(now);
     weekStart.setDate(now.getDate() - now.getDay()); // Start of current week (Sunday)
     weekStart.setHours(0, 0, 0, 0);
 
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6); // End of week (Saturday)
+    weekEnd.setHours(23, 59, 59, 999);
+
     const thisWeekSessions = sessions.filter(
-      (s: typeof sessions[number]) => s.startTime >= weekStart && s.startTime <= now
+      (s: typeof sessions[number]) => s.startTime >= weekStart && s.startTime <= weekEnd
     );
     const thisWeekCompleted = thisWeekSessions.filter(
       (s: typeof sessions[number]) => s.status === "COMPLETED"
@@ -252,6 +276,13 @@ export const statsRouter = createTRPCRouter({
       // Breakdown by type
       byType,
 
+      // Today
+      today: {
+        completed: todayCompleted,
+        scheduled: todayScheduled,
+        total: todaySessions.length,
+      },
+
       // This week
       thisWeek: {
         completed: thisWeekCompleted,
@@ -259,6 +290,9 @@ export const statsRouter = createTRPCRouter({
         total: thisWeekSessions.length,
       },
     };
+    } catch (error) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to fetch stats", cause: error });
+    }
   }),
 });
 

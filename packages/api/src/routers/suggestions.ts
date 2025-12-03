@@ -6,6 +6,7 @@
 // - Existing scheduled sessions
 // - Session type priority
 // - Fatigue/spacing heuristics
+// - User-configurable preferences with per-request overrides
 // =============================================================================
 
 import { getSuggestionsSchema } from "../lib/schemas.js";
@@ -28,15 +29,26 @@ interface DaySchedule {
   totalMinutes: number;
 }
 
+/** Resolved configuration after merging defaults, user prefs, and request overrides */
+interface SuggestionConfig {
+  maxDailyMinutes: number;
+  bufferMinutes: number;
+  preferMornings: boolean;
+  maxHighPriorityPerDay: number;
+  timezone: string;
+}
+
 // -----------------------------------------------------------------------------
-// Constants
+// Default Configuration
 // -----------------------------------------------------------------------------
 
-/** Minimum gap between sessions (minutes) */
-const MIN_GAP_MINUTES = 30;
-
-/** Maximum high-priority (4-5) sessions per day */
-const MAX_HIGH_PRIORITY_PER_DAY = 2;
+const DEFAULT_CONFIG: SuggestionConfig = {
+  maxDailyMinutes: 480, // 8 hours
+  bufferMinutes: 30, // 30-min gap between sessions
+  preferMornings: true, // Bonus for morning slots
+  maxHighPriorityPerDay: 2, // Max priority 4-5 sessions per day
+  timezone: "UTC",
+};
 
 /** Morning hours considered optimal for high-priority (24h format) */
 const MORNING_START = 6;
@@ -50,14 +62,6 @@ const MAX_SUGGESTIONS = 10;
 // -----------------------------------------------------------------------------
 
 /**
- * Parse HH:MM time string to minutes since midnight
- */
-function timeToMinutes(time: string): number {
-  const [hours, minutes] = time.split(":").map(Number);
-  return (hours ?? 0) * 60 + (minutes ?? 0);
-}
-
-/**
  * Add minutes to a date
  */
 function addMinutes(date: Date, minutes: number): Date {
@@ -65,19 +69,60 @@ function addMinutes(date: Date, minutes: number): Date {
 }
 
 /**
- * Get start of day for a date
+ * Get start of day for a date in a specific timezone
  */
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
+function startOfDayInTimezone(date: Date, timezone: string): Date {
+  try {
+    // Format the date in the target timezone to get the local date string
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const dateStr = formatter.format(date);
+    // Parse back as UTC midnight for that date
+    const [year, month, day] = dateStr.split("-").map(Number);
+    return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1, 0, 0, 0, 0));
+  } catch {
+    // Fallback to simple approach if timezone is invalid
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
 }
 
 /**
- * Get day of week (0 = Sunday)
+ * Get the hour in a specific timezone
  */
-function getDayOfWeek(date: Date): number {
-  return date.getDay();
+function getHourInTimezone(date: Date, timezone: string): number {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hour12: false,
+    });
+    return parseInt(formatter.format(date), 10);
+  } catch {
+    return date.getHours();
+  }
+}
+
+/**
+ * Get day of week in a specific timezone (0 = Sunday)
+ */
+function getDayOfWeekInTimezone(date: Date, timezone: string): number {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      weekday: "short",
+    });
+    const dayStr = formatter.format(date);
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return days.indexOf(dayStr);
+  } catch {
+    return date.getDay();
+  }
 }
 
 /**
@@ -94,23 +139,24 @@ function overlaps(
 
 /**
  * Score a time slot based on various heuristics
+ * Uses config-driven values instead of hardcoded constants
  */
 function scoreSlot(
   slot: { startTime: Date; endTime: Date },
   priority: number,
   daySchedule: DaySchedule,
-  existingSessions: { startTime: Date; endTime: Date }[]
+  existingSessions: { startTime: Date; endTime: Date }[],
+  config: SuggestionConfig
 ): { score: number; reasons: string[] } {
   let score = 100; // Start with base score
   const reasons: string[] = [];
 
-  const hour = slot.startTime.getHours();
+  const hour = getHourInTimezone(slot.startTime, config.timezone);
 
   // ---------------------------------------------------------------------------
-  // Priority-based morning preference
+  // Priority-based morning preference (configurable)
   // ---------------------------------------------------------------------------
-  // High-priority sessions (4-5) get bonus for morning slots
-  if (priority >= 4 && hour >= MORNING_START && hour < MORNING_END) {
+  if (config.preferMornings && priority >= 4 && hour >= MORNING_START && hour < MORNING_END) {
     score += 20;
     reasons.push("Morning slot (optimal for high priority)");
   }
@@ -118,7 +164,7 @@ function scoreSlot(
   // ---------------------------------------------------------------------------
   // Fatigue heuristic: Penalize clustering high-priority sessions
   // ---------------------------------------------------------------------------
-  if (priority >= 4 && daySchedule.highPriorityCount >= MAX_HIGH_PRIORITY_PER_DAY) {
+  if (priority >= 4 && daySchedule.highPriorityCount >= config.maxHighPriorityPerDay) {
     score -= 40;
     reasons.push("Day already has high-priority sessions");
   }
@@ -128,31 +174,36 @@ function scoreSlot(
   // ---------------------------------------------------------------------------
   const slotStart = slot.startTime.getTime();
   const slotEnd = slot.endTime.getTime();
+  const minGapMs = config.bufferMinutes * 2 * 60 * 1000; // Double buffer as ideal gap
 
   for (const session of existingSessions) {
     const sessionStart = session.startTime.getTime();
     const sessionEnd = session.endTime.getTime();
 
-    // Calculate gap in minutes
-    const gapBefore = (slotStart - sessionEnd) / (60 * 1000);
-    const gapAfter = (sessionStart - slotEnd) / (60 * 1000);
+    // Calculate gap in milliseconds
+    const gapBefore = slotStart - sessionEnd;
+    const gapAfter = sessionStart - slotEnd;
 
     // Penalize slots too close to existing sessions
-    if (gapBefore > 0 && gapBefore < 60) {
+    if (gapBefore > 0 && gapBefore < minGapMs) {
       score -= 10;
-      reasons.push("Close to previous session");
+      if (!reasons.includes("Close to previous session")) {
+        reasons.push("Close to previous session");
+      }
     }
-    if (gapAfter > 0 && gapAfter < 60) {
+    if (gapAfter > 0 && gapAfter < minGapMs) {
       score -= 10;
-      reasons.push("Close to next session");
+      if (!reasons.includes("Close to next session")) {
+        reasons.push("Close to next session");
+      }
     }
   }
 
   // ---------------------------------------------------------------------------
   // Balance heuristic: Slightly penalize days with heavy schedules
   // ---------------------------------------------------------------------------
-  if (daySchedule.totalMinutes > 240) {
-    // More than 4 hours scheduled
+  const busyThreshold = config.maxDailyMinutes * 0.5; // 50% of daily cap
+  if (daySchedule.totalMinutes > busyThreshold) {
     score -= 15;
     reasons.push("Day is already busy");
   }
@@ -174,7 +225,44 @@ export const suggestionsRouter = createTRPCRouter({
       const { startDate, endDate, sessionTypeId, duration } = input;
 
       // -----------------------------------------------------------------------
-      // Step 1: Fetch user availability windows
+      // Step 1: Fetch user preferences and merge with request config
+      // -----------------------------------------------------------------------
+      const userPrefs = await ctx.db.userPreferences.findUnique({
+        where: { userId: ctx.user.id },
+      });
+
+      // Merge: defaults → user prefs → request overrides
+      const config: SuggestionConfig = {
+        maxDailyMinutes:
+          input.config?.maxDailyMinutes ??
+          userPrefs?.maxDailyMinutes ??
+          DEFAULT_CONFIG.maxDailyMinutes,
+        bufferMinutes:
+          input.config?.bufferMinutes ??
+          userPrefs?.bufferMinutes ??
+          DEFAULT_CONFIG.bufferMinutes,
+        preferMornings:
+          input.config?.preferMornings ??
+          userPrefs?.preferMornings ??
+          DEFAULT_CONFIG.preferMornings,
+        maxHighPriorityPerDay:
+          input.config?.maxHighPriorityPerDay ??
+          userPrefs?.maxHighPriorityPerDay ??
+          DEFAULT_CONFIG.maxHighPriorityPerDay,
+        timezone: input.config?.timezone ?? DEFAULT_CONFIG.timezone,
+      };
+
+      // -----------------------------------------------------------------------
+      // Step 2: Normalize dates in user's timezone
+      // -----------------------------------------------------------------------
+      const normalizedStartDate = startOfDayInTimezone(startDate, config.timezone);
+      const normalizedEndDate = startOfDayInTimezone(
+        addMinutes(endDate, 24 * 60 - 1), // End of endDate
+        config.timezone
+      );
+
+      // -----------------------------------------------------------------------
+      // Step 3: Fetch user availability windows
       // -----------------------------------------------------------------------
       const availabilities = await ctx.db.availability.findMany({
         where: { userId: ctx.user.id },
@@ -189,14 +277,14 @@ export const suggestionsRouter = createTRPCRouter({
       }
 
       // -----------------------------------------------------------------------
-      // Step 2: Fetch existing scheduled sessions in range
+      // Step 4: Fetch existing scheduled sessions in range
       // -----------------------------------------------------------------------
       const existingSessions = await ctx.db.session.findMany({
         where: {
           userId: ctx.user.id,
           status: "SCHEDULED",
-          startTime: { gte: startDate },
-          endTime: { lte: addMinutes(endDate, 24 * 60) }, // Include full end date
+          startTime: { gte: normalizedStartDate },
+          endTime: { lte: addMinutes(normalizedEndDate, 24 * 60) },
         },
         include: {
           sessionType: {
@@ -207,27 +295,42 @@ export const suggestionsRouter = createTRPCRouter({
       });
 
       // -----------------------------------------------------------------------
-      // Step 3: Get session type priority (if specified)
+      // Step 5: Get session type priority and metadata (if specified)
       // -----------------------------------------------------------------------
       let priority = 3; // Default priority
+      let sessionTypeMetadata: {
+        id: string;
+        name: string;
+        priority: number;
+        color: string | null;
+        icon: string | null;
+      } | null = null;
+
       if (sessionTypeId) {
         const sessionType = await ctx.db.sessionType.findFirst({
           where: { id: sessionTypeId, userId: ctx.user.id },
         });
         if (sessionType) {
           priority = sessionType.priority;
+          sessionTypeMetadata = {
+            id: sessionType.id,
+            name: sessionType.name,
+            priority: sessionType.priority,
+            color: sessionType.color,
+            icon: sessionType.icon,
+          };
         }
       }
 
       // -----------------------------------------------------------------------
-      // Step 4: Build day schedules for fatigue tracking
+      // Step 6: Build day schedules for fatigue tracking
       // -----------------------------------------------------------------------
       const daySchedules = new Map<string, DaySchedule>();
 
       for (const session of existingSessions) {
-        const dayKey = startOfDay(session.startTime).toISOString();
+        const dayKey = startOfDayInTimezone(session.startTime, config.timezone).toISOString();
         const existing = daySchedules.get(dayKey) ?? {
-          date: startOfDay(session.startTime),
+          date: startOfDayInTimezone(session.startTime, config.timezone),
           highPriorityCount: 0,
           totalMinutes: 0,
         };
@@ -240,29 +343,28 @@ export const suggestionsRouter = createTRPCRouter({
       }
 
       // -----------------------------------------------------------------------
-      // Step 5: Generate candidate time slots from availability
+      // Step 7: Generate candidate time slots from availability
       // -----------------------------------------------------------------------
       const candidates: TimeSlot[] = [];
-      const currentDate = new Date(startDate);
-      currentDate.setHours(0, 0, 0, 0);
+      const currentDate = new Date(normalizedStartDate);
 
-      while (currentDate <= endDate) {
-        const dayOfWeek = getDayOfWeek(currentDate);
+      while (currentDate <= normalizedEndDate) {
+        const dayOfWeek = getDayOfWeekInTimezone(currentDate, config.timezone);
 
         // Find availability windows for this day of week
         const dayAvailabilities = availabilities.filter(
-          (a: typeof availabilities[number]) => a.dayOfWeek === dayOfWeek
+          (a: (typeof availabilities)[number]) => a.dayOfWeek === dayOfWeek
         );
 
         for (const avail of dayAvailabilities) {
           // Convert availability times to actual dates
           const availStart = new Date(currentDate);
           const [startHour, startMin] = avail.startTime.split(":").map(Number);
-          availStart.setHours(startHour ?? 0, startMin ?? 0, 0, 0);
+          availStart.setUTCHours(startHour ?? 0, startMin ?? 0, 0, 0);
 
           const availEnd = new Date(currentDate);
           const [endHour, endMin] = avail.endTime.split(":").map(Number);
-          availEnd.setHours(endHour ?? 0, endMin ?? 0, 0, 0);
+          availEnd.setUTCHours(endHour ?? 0, endMin ?? 0, 0, 0);
 
           // Skip if availability window is too short for requested duration
           const availMinutes = (availEnd.getTime() - availStart.getTime()) / (60 * 1000);
@@ -273,47 +375,53 @@ export const suggestionsRouter = createTRPCRouter({
 
           while (addMinutes(slotStart, duration) <= availEnd) {
             const slotEnd = addMinutes(slotStart, duration);
+            const now = new Date();
 
-            // Skip if slot is in the past
-            if (slotStart < new Date()) {
-              slotStart = addMinutes(slotStart, 30); // Move in 30-min increments
+            // HARD FILTER: Skip if slot is in the past
+            if (slotStart < now) {
+              slotStart = addMinutes(slotStart, 30);
               continue;
             }
 
-            // Check for conflicts with existing sessions (including buffer)
-            const hasConflict = existingSessions.some((session: typeof existingSessions[number]) =>
-              overlaps(
-                addMinutes(slotStart, -MIN_GAP_MINUTES),
-                addMinutes(slotEnd, MIN_GAP_MINUTES),
-                session.startTime,
-                session.endTime
-              )
+            // HARD FILTER: Check for conflicts with existing sessions (including buffer)
+            const hasConflict = existingSessions.some(
+              (session: (typeof existingSessions)[number]) =>
+                overlaps(
+                  addMinutes(slotStart, -config.bufferMinutes),
+                  addMinutes(slotEnd, config.bufferMinutes),
+                  session.startTime,
+                  session.endTime
+                )
             );
 
-            if (!hasConflict) {
-              // Get day schedule for scoring
-              const dayKey = startOfDay(slotStart).toISOString();
-              const daySchedule = daySchedules.get(dayKey) ?? {
-                date: startOfDay(slotStart),
-                highPriorityCount: 0,
-                totalMinutes: 0,
-              };
-
-              // Score the slot
-              const { score, reasons } = scoreSlot(
-                { startTime: slotStart, endTime: slotEnd },
-                priority,
-                daySchedule,
-                existingSessions
-              );
-
-              candidates.push({
-                startTime: new Date(slotStart),
-                endTime: new Date(slotEnd),
-                score,
-                reasons,
-              });
+            if (hasConflict) {
+              slotStart = addMinutes(slotStart, 30);
+              continue;
             }
+
+            // Get day schedule for scoring
+            const dayKey = startOfDayInTimezone(slotStart, config.timezone).toISOString();
+            const daySchedule = daySchedules.get(dayKey) ?? {
+              date: startOfDayInTimezone(slotStart, config.timezone),
+              highPriorityCount: 0,
+              totalMinutes: 0,
+            };
+
+            // Score the slot using config-driven values
+            const { score, reasons } = scoreSlot(
+              { startTime: slotStart, endTime: slotEnd },
+              priority,
+              daySchedule,
+              existingSessions,
+              config
+            );
+
+            candidates.push({
+              startTime: new Date(slotStart),
+              endTime: new Date(slotEnd),
+              score,
+              reasons,
+            });
 
             // Move to next potential slot (30-min increments)
             slotStart = addMinutes(slotStart, 30);
@@ -325,7 +433,17 @@ export const suggestionsRouter = createTRPCRouter({
       }
 
       // -----------------------------------------------------------------------
-      // Step 6: Sort by score and return top suggestions
+      // Step 8: Check if any feasible slots exist
+      // -----------------------------------------------------------------------
+      if (candidates.length === 0) {
+        return {
+          suggestions: [],
+          message: "No available time slots found in the specified range.",
+        };
+      }
+
+      // -----------------------------------------------------------------------
+      // Step 9: Sort by score and return top suggestions
       // -----------------------------------------------------------------------
       const suggestions = candidates
         .sort((a, b) => b.score - a.score)
@@ -335,15 +453,12 @@ export const suggestionsRouter = createTRPCRouter({
           endTime: slot.endTime,
           score: slot.score,
           reasons: slot.reasons.length > 0 ? slot.reasons : ["Available slot"],
+          sessionType: sessionTypeMetadata,
         }));
 
       return {
         suggestions,
-        message:
-          suggestions.length > 0
-            ? `Found ${suggestions.length} suggested time slots`
-            : "No available time slots found in the specified range",
+        message: `Found ${suggestions.length} suggested time slots`,
       };
     }),
 });
-

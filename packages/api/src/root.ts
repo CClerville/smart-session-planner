@@ -11,6 +11,7 @@ import { sessionsRouter } from "./routers/sessions.js";
 import { sessionTypesRouter } from "./routers/sessionTypes.js";
 import { statsRouter } from "./routers/stats.js";
 import { suggestionsRouter } from "./routers/suggestions.js";
+import { userPreferencesRouter } from "./routers/userPreferences.js";
 import { createTRPCRouter } from "./trpc.js";
 
 // -----------------------------------------------------------------------------
@@ -23,6 +24,7 @@ import { createTRPCRouter } from "./trpc.js";
 // - trpc.sessions.create()
 // - trpc.suggestions.getSuggestions()
 // - trpc.stats.getStats()
+// - trpc.userPreferences.get()
 // -----------------------------------------------------------------------------
 
 export const appRouter = createTRPCRouter({
@@ -32,6 +34,7 @@ export const appRouter = createTRPCRouter({
   sessions: sessionsRouter,
   suggestions: suggestionsRouter,
   stats: statsRouter,
+  userPreferences: userPreferencesRouter,
 });
 
 // -----------------------------------------------------------------------------

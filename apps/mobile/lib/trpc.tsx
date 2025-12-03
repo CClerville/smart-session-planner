@@ -5,13 +5,14 @@
 // Includes auth token injection and error handling.
 // =============================================================================
 
-import { createTRPCReact } from "@trpc/react-query";
-import { httpBatchLink } from "@trpc/client";
-import { QueryClientProvider } from "@tanstack/react-query";
-import superjson from "superjson";
 import type { AppRouter } from "@repo/api";
-import { getToken } from "./auth";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { httpBatchLink } from "@trpc/client";
+import { createTRPCReact } from "@trpc/react-query";
+import { useState } from "react";
+import superjson from "superjson";
 import { queryClient } from "./query-client";
+import { getToken } from "./storage";
 
 // -----------------------------------------------------------------------------
 // tRPC React Hooks
@@ -29,6 +30,8 @@ export { queryClient };
 /**
  * Creates the tRPC client with the API URL.
  * Call this after determining the API URL from environment.
+ *
+ * Uses Authorization header with token from SecureStore for authentication.
  */
 export function createTRPCClient(apiUrl: string) {
   return trpc.createClient({
@@ -37,12 +40,10 @@ export function createTRPCClient(apiUrl: string) {
         url: `${apiUrl}/api/trpc`,
         // Use superjson for date serialization
         transformer: superjson,
-        // Inject auth token into requests
+        // Inject auth token into requests via Authorization header
         async headers() {
           const token = await getToken();
-          return token
-            ? { Authorization: `Bearer ${token}` }
-            : {};
+          return token ? { Authorization: `Bearer ${token}` } : {};
         },
       }),
     ],
@@ -62,14 +63,11 @@ interface TRPCProviderProps {
  * Wraps the app with tRPC and QueryClient providers.
  */
 export function TRPCProvider({ children, apiUrl }: TRPCProviderProps) {
-  const trpcClient = createTRPCClient(apiUrl);
+  const [trpcClient] = useState(() => createTRPCClient(apiUrl));
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </trpc.Provider>
   );
 }
-

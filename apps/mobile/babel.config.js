@@ -11,6 +11,17 @@ module.exports = function (api) {
           config: "./tamagui.config.ts",
         },
       ],
+      // Module resolver for path aliases
+      [
+        "module-resolver",
+        {
+          root: ["./"],
+          alias: {
+            "@": "./src",
+          },
+          extensions: [".js", ".jsx", ".ts", ".tsx", ".json"],
+        },
+      ],
       // Reanimated must be last
       "react-native-reanimated/plugin",
     ],

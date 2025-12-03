@@ -13,7 +13,7 @@ A full-stack mobile application for intelligent session scheduling and planning.
 
 ```text
 ├── apps/
-│   ├── api/           # Next.js API server with tRPC
+│   ├── server/        # Next.js API server with tRPC
 │   └── mobile/        # Expo mobile app
 ├── packages/
 │   ├── api/           # tRPC routers and schemas
@@ -40,7 +40,7 @@ pnpm install
 
 ### 2. Setup Environment Variables
 
-Create a `.env` file in `apps/api/` directory:
+Create a `.env` file in `apps/server/` directory:
 
 ```env
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/smart_session_planner"
@@ -56,7 +56,7 @@ JWT_SECRET="your-secret-key-generate-with-openssl-rand-base64-32"
 The API dev script automatically starts Docker Compose to run PostgreSQL. However, you need to generate the Prisma client and push the schema first:
 
 ```bash
-cd apps/api
+cd apps/server
 pnpm db:generate
 pnpm db:push
 ```
@@ -76,6 +76,7 @@ pnpm dev
 ```
 
 This will:
+
 - Start the PostgreSQL database via Docker Compose (from the API dev script)
 - Start the Next.js API server on `http://localhost:3000`
 - Start the Expo development server for the mobile app
@@ -85,11 +86,12 @@ This will:
 **Start the API server:**
 
 ```bash
-cd apps/api
+cd apps/server
 pnpm dev
 ```
 
 This command will:
+
 - Automatically start Docker Compose to run PostgreSQL
 - Kill any existing process on port 3000
 - Start the Next.js API server on `http://localhost:3000`
@@ -167,7 +169,7 @@ tRPC provides end-to-end type safety. Changes to API shapes are immediately refl
 ### Database Migrations
 
 ```bash
-cd apps/api
+cd apps/server
 pnpm db:migrate    # Create migration
 pnpm db:push       # Push schema changes (dev)
 pnpm db:studio     # Open Prisma Studio
@@ -201,6 +203,7 @@ If you see database connection errors:
 1. Make sure Docker Desktop (or Docker daemon) is running
 2. Check if the container is running: `docker ps`
 3. Start the container manually if needed:
+
    ```bash
    docker compose -f docker-compose.yml up -d
    ```
@@ -209,26 +212,30 @@ If you see database connection errors:
 
 If you're having trouble connecting to the database:
 
-1. Verify the `DATABASE_URL` in `apps/api/.env` matches the Docker Compose configuration:
+1. Verify the `DATABASE_URL` in `apps/server/.env` matches the Docker Compose configuration:
+
    ```env
    DATABASE_URL="postgresql://postgres:postgres@localhost:5432/smart_session_planner"
    ```
 
 2. Check if the PostgreSQL container is running:
+
    ```bash
    docker ps | grep smart-session-db
    ```
 
 3. View container logs if there are issues:
+
    ```bash
    docker logs smart-session-db
    ```
 
 4. Reset the database if needed (⚠️ **WARNING:** This will delete all data):
+
    ```bash
    docker compose -f docker-compose.yml down -v
    docker compose -f docker-compose.yml up -d
-   cd apps/api
+   cd apps/server
    pnpm db:push
    ```
 
@@ -239,10 +246,12 @@ If the mobile app can't reach the API:
 1. Make sure the API server is running on `http://localhost:3000`
 2. If testing on a physical device, ensure your device is on the same network
 3. For physical devices, you may need to set `EXPO_PUBLIC_API_URL` to your computer's local IP address:
+
    ```env
    # In apps/mobile/.env
    EXPO_PUBLIC_API_URL="http://192.168.1.XXX:3000"
    ```
+
 4. If using Expo Go, you can use the tunnel option: `pnpm start --tunnel`
 
 ## License

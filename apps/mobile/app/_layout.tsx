@@ -1,28 +1,21 @@
-// =============================================================================
-// ROOT LAYOUT
-// =============================================================================
-// App entry point with providers and navigation setup.
-// =============================================================================
-
-import { useEffect } from "react";
-import { useColorScheme } from "react-native";
-import { Stack } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-import * as SplashScreen from "expo-splash-screen";
-import { TamaguiProvider, Theme } from "tamagui";
 import { useFonts } from "expo-font";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
+import { TamaguiProvider, Theme } from "tamagui";
 
+import { API_URL } from "@/constants";
+import { AuthProvider, TRPCProvider } from "@/lib/providers";
 import config from "../tamagui.config";
-import { TRPCProvider } from "../lib/trpc";
-import { AuthProvider } from "../lib/auth";
-import { API_URL } from "../lib/constants";
+
+// Light lavender background from Figma design
+const BACKGROUND_COLOR = "#F8F0F8";
 
 // Prevent splash screen from hiding until fonts load
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   // Load fonts required by Tamagui
   const [fontsLoaded] = useFonts({
     Inter: require("@tamagui/font-inter/otf/Inter-Medium.otf"),
@@ -41,22 +34,30 @@ export default function RootLayout() {
 
   return (
     <TamaguiProvider config={config}>
-      <Theme name={colorScheme === "dark" ? "dark" : "light"}>
+      {/* Force light theme to match Figma design */}
+      <Theme name="light">
         <TRPCProvider apiUrl={API_URL}>
           <AuthProvider>
             <Stack
               screenOptions={{
                 headerShown: false,
                 contentStyle: {
-                  backgroundColor: colorScheme === "dark" ? "#0a0a0a" : "#fff",
+                  backgroundColor: BACKGROUND_COLOR,
+                },
+                headerStyle: {
+                  backgroundColor: BACKGROUND_COLOR,
+                },
+                headerTintColor: "#1A1A1A",
+                headerTitleStyle: {
+                  fontWeight: "600",
+                  color: "#1A1A1A",
                 },
               }}
             />
-            <StatusBar style="auto" />
+            <StatusBar style="dark" />
           </AuthProvider>
         </TRPCProvider>
       </Theme>
     </TamaguiProvider>
   );
 }
-
